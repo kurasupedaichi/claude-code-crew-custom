@@ -18,7 +18,15 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
   const fitAddonRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
-    if (!terminalRef.current || xtermRef.current) return;
+    if (!terminalRef.current) return;
+
+    // Clean up existing terminal if session changes
+    if (xtermRef.current) {
+      console.log('[TerminalView] Cleaning up existing terminal for session:', session.id);
+      xtermRef.current.dispose();
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+    }
 
     // Create terminal instance
     const term = new Terminal({
@@ -81,21 +89,25 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
     };
     window.addEventListener('resize', handleResize);
 
-    // Socket event handlers
+    // Socket event handlers - create session-specific handlers to avoid closure issues
+    const currentSessionId = session.id;
+    const currentWorktreePath = session.worktreePath;
+    
     const handleOutput = ({ sessionId, data }: { sessionId: string; data: string }) => {
-      if (sessionId === session.id) {
-        term.write(data);
+      if (sessionId === currentSessionId && xtermRef.current) {
+        xtermRef.current.write(data);
         // Auto-scroll to bottom on new output
-        term.scrollToBottom();
+        xtermRef.current.scrollToBottom();
       }
     };
 
     const handleRestore = ({ sessionId, history }: { sessionId: string; history: string }) => {
-      if (sessionId === session.id) {
-        term.clear();
-        term.write(history);
+      if (sessionId === currentSessionId && xtermRef.current) {
+        console.log('[TerminalView] Restoring history for session:', currentSessionId, 'worktree:', currentWorktreePath);
+        xtermRef.current.clear();
+        xtermRef.current.write(history);
         // Scroll to bottom after restoring history
-        term.scrollToBottom();
+        xtermRef.current.scrollToBottom();
       }
     };
 
@@ -104,6 +116,7 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
 
     // Request session restore if reconnecting
     // Send both sessionId and worktreePath/type for better session recovery
+    console.log('[TerminalView] Requesting restore for session:', session.id, 'worktree:', session.worktreePath);
     socket.emit('session:restore', {
       sessionId: session.id,
       worktreePath: session.worktreePath,
@@ -112,14 +125,17 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
 
     // Cleanup
     return () => {
+      console.log('[TerminalView] Cleaning up listeners for session:', currentSessionId);
       window.removeEventListener('resize', handleResize);
       socket.off('session:output', handleOutput);
       socket.off('session:restore', handleRestore);
-      term.dispose();
-      xtermRef.current = null;
-      fitAddonRef.current = null;
+      if (xtermRef.current) {
+        xtermRef.current.dispose();
+        xtermRef.current = null;
+        fitAddonRef.current = null;
+      }
     };
-  }, [session.id, socket]);
+  }, [session.id, session.worktreePath, session.type, socket]);
 
   // Handle session changes
   useEffect(() => {
@@ -133,6 +149,13 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
       xtermRef.current.focus();
     }
   }, [session]);
+
+  // Scroll to bottom when worktree path changes
+  useEffect(() => {
+    if (xtermRef.current && session.worktreePath) {
+      xtermRef.current.scrollToBottom();
+    }
+  }, [session.worktreePath]);
 
   return (
     <Box

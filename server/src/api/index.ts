@@ -213,4 +213,64 @@ export function setupApiRoutes(app: Express, io: Server, sessionManager: Session
       });
     }
   });
+
+  // Send instruction to multiple worktrees
+  app.post('/api/worktrees/send-instruction', (req, res) => {
+    try {
+      const { instruction, worktreePaths } = req.body as { instruction: string; worktreePaths: string[] };
+      
+      if (!instruction || !worktreePaths || !Array.isArray(worktreePaths) || worktreePaths.length === 0) {
+        return res.status(400).json({ error: 'Instruction and worktreePaths array are required' });
+      }
+
+      const results: { worktreePath: string; success: boolean; error?: string }[] = [];
+      
+      for (const worktreePath of worktreePaths) {
+        try {
+          // Find Claude session for this worktree
+          const sessions = sessionManager.getAllSessions();
+          const claudeSession = sessions.find(s => 
+            s.worktreePath === worktreePath && s.type === 'claude'
+          );
+          
+          if (!claudeSession) {
+            results.push({
+              worktreePath,
+              success: false,
+              error: 'No Claude session found for this worktree'
+            });
+            continue;
+          }
+
+          // Send instruction to the Claude session
+          sessionManager.writeToSession(claudeSession.id, instruction + '\n');
+          results.push({
+            worktreePath,
+            success: true
+          });
+        } catch (error) {
+          results.push({
+            worktreePath,
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to send instruction'
+          });
+        }
+      }
+
+      const allSucceeded = results.every(r => r.success);
+      if (allSucceeded) {
+        res.json({ success: true, results });
+      } else {
+        res.status(207).json({ 
+          success: false, 
+          results,
+          error: 'Some instructions failed to send' 
+        });
+      }
+    } catch (error) {
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to send instructions' 
+      });
+    }
+  });
 }
