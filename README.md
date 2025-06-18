@@ -1,6 +1,6 @@
 # Claude Code Crew Custom
 
-[![npm version](https://badge.fury.io/js/claude-code-crew.svg)](https://www.npmjs.com/package/claude-code-crew)
+[![npm version](https://badge.fury.io/js/claude-code-crew.svg)](https://www.npmjs.com/package/claude-code-crew-custom)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/node/v/claude-code-crew.svg)](https://nodejs.org)
 
