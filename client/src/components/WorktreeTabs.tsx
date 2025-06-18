@@ -90,9 +90,6 @@ const WorktreeTabs: React.FC<WorktreeTabsProps> = ({
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   Instructions
-                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                    Ctrl+3
-                  </Typography>
                 </Box>
               }
               value="instructions"

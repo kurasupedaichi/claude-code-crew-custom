@@ -170,9 +170,14 @@ export class SessionManager extends EventEmitter {
     } else {
       // Claude Code session
       command = 'claude';
-      args = process.env['CC_CLAUDE_ARGS']
-        ? process.env['CC_CLAUDE_ARGS'].split(' ')
-        : [];
+      // Use provided parameters if available, otherwise fall back to environment variable
+      if (parameters && parameters.length > 0) {
+        args = parameters;
+      } else {
+        args = process.env['CC_CLAUDE_ARGS']
+          ? process.env['CC_CLAUDE_ARGS'].split(' ')
+          : [];
+      }
     }
 
     const ptyProcess = spawn(command, args, {

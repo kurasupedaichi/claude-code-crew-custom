@@ -81,7 +81,10 @@ export const TerminalParameterDialog: React.FC<TerminalParameterDialogProps> = (
           break;
         case 'Enter':
           event.preventDefault();
-          handleConfirm();
+          const selectedParameter = TERMINAL_PARAMETERS[selectedIndex];
+          const parametersToSend = selectedParameter.value === '' ? [] : [selectedParameter.value];
+          onConfirm(parametersToSend);
+          onClose();
           break;
         case 'Escape':
           event.preventDefault();
@@ -110,11 +113,6 @@ export const TerminalParameterDialog: React.FC<TerminalParameterDialogProps> = (
     }
   };
 
-  const handleConfirm = () => {
-    onConfirm(selectedParameters);
-    onClose();
-  };
-
   const isParameterSelected = (parameter: TerminalParameter) => {
     if (parameter.value === '') {
       return selectedParameters.length === 0;
@@ -127,7 +125,7 @@ export const TerminalParameterDialog: React.FC<TerminalParameterDialogProps> = (
       <DialogTitle>Select Terminal Parameters</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Use arrow keys to navigate, space to select/deselect, and Enter to confirm.
+          Use arrow keys to navigate and Enter to start with the selected parameter.
         </Typography>
         <List ref={listRef}>
           {TERMINAL_PARAMETERS.map((parameter, index) => (
@@ -169,7 +167,12 @@ export const TerminalParameterDialog: React.FC<TerminalParameterDialogProps> = (
         <Button onClick={onClose} color="inherit">
           Cancel (Esc)
         </Button>
-        <Button onClick={handleConfirm} variant="contained" color="primary">
+        <Button onClick={() => {
+          const selectedParameter = TERMINAL_PARAMETERS[selectedIndex];
+          const parametersToSend = selectedParameter.value === '' ? [] : [selectedParameter.value];
+          onConfirm(parametersToSend);
+          onClose();
+        }} variant="contained" color="primary">
           Start Terminal (Enter)
         </Button>
       </DialogActions>

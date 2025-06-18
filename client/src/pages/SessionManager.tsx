@@ -37,7 +37,6 @@ import NotificationSettings from '../components/NotificationSettings';
 import NotificationPermissionDialog from '../components/NotificationPermissionDialog';
 import WorktreeTabs, { TabType } from '../components/WorktreeTabs';
 import InstructionsViewer from '../components/InstructionsViewer';
-import SendInstructionDialog from '../components/SendInstructionDialog';
 import { NotificationService } from '../services/notificationService';
 import { AutoEnterService } from '../services/autoEnterService';
 import { TerminalParameterDialog } from '../components/TerminalParameterDialog';
@@ -58,7 +57,6 @@ const SessionManager: React.FC = () => {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [sendToAllDialogOpen, setSendToAllDialogOpen] = useState(false);
   const [notificationDialogOpen, setNotificationDialogOpen] = useState(false);
-  const [sendInstructionDialogOpen, setSendInstructionDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('claude');
   const [hasInstructions, setHasInstructions] = useState(false);
   const previousStateRef = useRef<Map<string, string>>(new Map());
@@ -190,12 +188,14 @@ const SessionManager: React.FC = () => {
         if (previousState && previousState !== session.state) {
           console.log('[Client] State changed from', previousState, 'to', session.state, 'for worktree:', worktree.branch);
           
-          // 通知機能
-          notificationService.notifyStateChange(
-            worktree.branch,
-            session.state,
-            previousState
-          );
+          // 通知機能 - Claude Codeセッションのみ通知
+          if (session.type === 'claude') {
+            notificationService.notifyStateChange(
+              worktree.branch,
+              session.state,
+              previousState
+            );
+          }
           
           // 自動Enter機能
           handleAutoEnter(session, worktree, previousState);
@@ -279,7 +279,10 @@ const SessionManager: React.FC = () => {
 
           // Create Claude session if it doesn't exist
           if (!claudeExists && socket) {
-            socket.emit('session:create', savedWorktree.path, 'claude');
+            // Show terminal parameter dialog for first Claude session
+            console.log('[SessionManager] Opening terminal parameter dialog for auto-restored Claude session:', savedWorktree.path);
+            setPendingTerminalWorktree(savedWorktree);
+            setShowTerminalParameterDialog(true);
           } else {
             // Set existing Claude session
             const claude = worktreeSessions.find(s => s.type === 'claude');
@@ -429,8 +432,10 @@ const SessionManager: React.FC = () => {
     const claudeExists = worktreeSessions.some(s => s.type === 'claude');
 
     if (!claudeExists && socket) {
-      // Create Claude session if it doesn't exist
-      socket.emit('session:create', worktree.path, 'claude');
+      // Show terminal parameter dialog when creating Claude session for the first time
+      console.log('[SessionManager] Opening terminal parameter dialog for Claude session:', worktree.path);
+      setPendingTerminalWorktree(worktree);
+      setShowTerminalParameterDialog(true);
     } else {
       // Set existing Claude session
       const claude = worktreeSessions.find(s => s.type === 'claude');
@@ -469,6 +474,11 @@ const SessionManager: React.FC = () => {
       socketConnected: socket?.connected
     });
     
+    // Save active tab to localStorage
+    if (selectedWorktree) {
+      localStorage.setItem(`activeTab_${selectedWorktree.path}`, tab);
+    }
+    
     setActiveTab(tab);
     
     // Handle tab switching based on tab type
@@ -476,9 +486,8 @@ const SessionManager: React.FC = () => {
       if (tab === 'terminal') {
         // Create terminal session if it doesn't exist
         if (!terminalSession) {
-          console.log('[SessionManager] Opening terminal parameter dialog for:', selectedWorktree.path);
-          setPendingTerminalWorktree(selectedWorktree);
-          setShowTerminalParameterDialog(true);
+          console.log('[SessionManager] Creating terminal session without dialog');
+          socket.emit('session:create', selectedWorktree.path, 'terminal');
         } else {
           // Switch to existing terminal session
           console.log('[SessionManager] Switching to terminal session:', terminalSession.id);
@@ -500,11 +509,6 @@ const SessionManager: React.FC = () => {
           });
         }
       }
-    }
-    
-    // Save active tab to localStorage
-    if (selectedWorktree) {
-      localStorage.setItem(`activeTab_${selectedWorktree.path}`, tab);
     }
   }, [selectedWorktree, terminalSession, socket, sessions]);
 
@@ -563,7 +567,7 @@ const SessionManager: React.FC = () => {
       else if (event.ctrlKey && event.key === '1') {
         event.preventDefault();
         if (selectedWorktree) {
-          setActiveTab('claude');
+          handleTabChange('claude');
         }
       }
       // Ctrl+2: Terminal tab
@@ -573,38 +577,12 @@ const SessionManager: React.FC = () => {
           handleTabChange('terminal');
         }
       }
-      // Ctrl+3: Instructions tab (if available)
-      else if (event.ctrlKey && event.key === '3') {
-        event.preventDefault();
-        if (selectedWorktree && hasInstructions) {
-          setActiveTab('instructions');
-        }
-      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedWorktree, hasInstructions, handleTabChange, worktrees, handleSelectWorktree]);
 
-<<<<<<< HEAD
-  const handleSendInstruction = async (instruction: string, selectedWorktrees: string[]) => {
-    const response = await fetch('/api/worktrees/send-instruction', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        instruction,
-        worktreePaths: selectedWorktrees,
-      }),
-    });
-
-    const data = await response.json();
-    if (!data.success && response.status !== 207) {
-      throw new Error(data.error || 'Failed to send instruction');
-    }
-  };
-=======
   const handleSendToAll = useCallback((message: string, selectedWorktreePaths: string[]) => {
     if (!socket || !socket.connected) {
       console.error('[SessionManager] Cannot send to all: socket not connected');
@@ -626,14 +604,14 @@ const SessionManager: React.FC = () => {
         // Send Enter key after a short delay
         setTimeout(() => {
           socket.emit('session:input', { 
-            sessionId: worktree.session.id, 
+            sessionId: worktree!.session!.id,
             input: '\r' 
           });
         }, 100);
       }
     });
   }, [socket, worktrees]);
->>>>>>> fix-send-all
+  
 
   return (
     <Box sx={{ display: 'flex', height: '100%' }}>
@@ -666,14 +644,6 @@ const SessionManager: React.FC = () => {
               'Claude Code Crew'
             )}
           </Typography>
-          <IconButton
-            color="inherit"
-            onClick={() => setSendInstructionDialogOpen(true)}
-            disabled={worktrees.length === 0}
-            sx={{ mr: 2 }}
-          >
-            <Send />
-          </IconButton>
           {((activeTab === 'claude' && claudeSession) || (activeTab === 'terminal' && terminalSession)) && (
             <Chip
               label={(activeTab === 'claude' ? claudeSession : terminalSession)?.state.replace('_', ' ')}
@@ -873,13 +843,6 @@ const SessionManager: React.FC = () => {
         open={notificationDialogOpen}
         onClose={() => setNotificationDialogOpen(false)}
       />
-<<<<<<< HEAD
-      <SendInstructionDialog
-        open={sendInstructionDialogOpen}
-        onClose={() => setSendInstructionDialogOpen(false)}
-        worktrees={worktrees}
-        onSendInstruction={handleSendInstruction}
-      />
       <TerminalParameterDialog
         open={showTerminalParameterDialog}
         onClose={() => {
@@ -888,19 +851,28 @@ const SessionManager: React.FC = () => {
         }}
         onConfirm={(parameters) => {
           if (pendingTerminalWorktree && socket && socket.connected) {
-            console.log('[SessionManager] Creating terminal session with parameters:', parameters);
-            socket.emit('session:create', pendingTerminalWorktree.path, 'terminal', parameters);
+            // Check if this is for claude or terminal session
+            const worktreeSessions = Array.from(sessions.values()).filter(s => s.worktreePath === pendingTerminalWorktree.path);
+            const claudeExists = worktreeSessions.some(s => s.type === 'claude');
+            
+            if (!claudeExists) {
+              // Creating Claude session with parameters
+              console.log('[SessionManager] Creating claude session with parameters:', parameters);
+              socket.emit('session:create', pendingTerminalWorktree.path, 'claude', parameters);
+            } else {
+              // Creating Terminal session with parameters
+              console.log('[SessionManager] Creating terminal session with parameters:', parameters);
+              socket.emit('session:create', pendingTerminalWorktree.path, 'terminal', parameters);
+            }
           }
           setShowTerminalParameterDialog(false);
           setPendingTerminalWorktree(null);
-        }}
-=======
+        }}></TerminalParameterDialog>
       <SendToAllDialog
         open={sendToAllDialogOpen}
         onClose={() => setSendToAllDialogOpen(false)}
         worktrees={worktrees}
         onSend={handleSendToAll}
->>>>>>> fix-send-all
       />
     </Box>
   );

@@ -21,7 +21,7 @@ import {
   FolderOpen,
   Circle,
 } from '@mui/icons-material';
-import { Worktree, Session } from '../../../shared/types';
+import { Worktree } from '../../../shared/types';
 
 interface SendToAllDialogProps {
   open: boolean;
@@ -41,7 +41,7 @@ const SendToAllDialog: React.FC<SendToAllDialogProps> = ({
 
   // Filter worktrees that have active Claude sessions
   const activeWorktrees = worktrees.filter(
-    (wt) => wt.session && wt.session.type === 'claude' && wt.session.state !== 'closed'
+    (wt) => wt.session && wt.session.type === 'claude' && wt.session.state !== 'idle'
   );
 
   const handleToggleWorktree = (worktreePath: string) => {
@@ -146,13 +146,12 @@ const SendToAllDialog: React.FC<SendToAllDialogProps> = ({
                       <FolderOpen />
                     </ListItemIcon>
                     <ListItemText
-                      primary={worktree.name}
+                      primary={worktree.branch}
                       secondary={worktree.path}
                     />
                     {worktree.session && (
                       <Circle
-                        sx={{ ml: 1 }}
-                        color={getSessionStateColor(worktree.session.state)}
+                        sx={{ ml: 1, color: getSessionStateColor(worktree.session.state) }}
                         fontSize="small"
                       />
                     )}
