@@ -551,8 +551,16 @@ const SessionManager: React.FC = () => {
   // キーボードショートカットの設定
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Command+1-9 (Mac): Switch to worktree by index
+      if (event.metaKey && event.key >= '1' && event.key <= '9') {
+        event.preventDefault();
+        const worktreeIndex = parseInt(event.key) - 1;
+        if (worktreeIndex < worktrees.length) {
+          handleSelectWorktree(worktrees[worktreeIndex]);
+        }
+      }
       // Ctrl+1: Claude Code tab
-      if (event.ctrlKey && event.key === '1') {
+      else if (event.ctrlKey && event.key === '1') {
         event.preventDefault();
         if (selectedWorktree) {
           setActiveTab('claude');
@@ -576,7 +584,7 @@ const SessionManager: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedWorktree, hasInstructions, handleTabChange]);
+  }, [selectedWorktree, hasInstructions, handleTabChange, worktrees, handleSelectWorktree]);
 
 <<<<<<< HEAD
   const handleSendInstruction = async (instruction: string, selectedWorktrees: string[]) => {
@@ -703,7 +711,7 @@ const SessionManager: React.FC = () => {
         </Toolbar>
         <Divider />
         <List>
-          {worktrees.map((worktree) => (
+          {worktrees.map((worktree, index) => (
             <ListItem key={worktree.path} disablePadding>
               <ListItemButton
                 selected={selectedWorktree?.path === worktree.path}
@@ -713,7 +721,21 @@ const SessionManager: React.FC = () => {
                   {getWorktreeStatusIcon(worktree.path)}
                 </ListItemIcon>
                 <ListItemText
-                  primary={worktree.branch}
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <span>{worktree.branch}</span>
+                      {index === 0 && (
+                        <Typography variant="caption" sx={{ color: 'text.secondary', bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
+                          ⌘1
+                        </Typography>
+                      )}
+                      {index === 1 && (
+                        <Typography variant="caption" sx={{ color: 'text.secondary', bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
+                          ⌘2
+                        </Typography>
+                      )}
+                    </Box>
+                  }
                   secondary={worktree.path}
                 />
               </ListItemButton>
