@@ -13,6 +13,7 @@ import {
   Chip,
   Divider,
   Tooltip,
+  IconButton,
 } from '@mui/material';
 import {
   FolderOpen,
@@ -23,6 +24,7 @@ import {
   Circle,
   Code,
   Description,
+  Send,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { Worktree, Session } from '../../../shared/types';
@@ -34,8 +36,10 @@ import NotificationSettings from '../components/NotificationSettings';
 import NotificationPermissionDialog from '../components/NotificationPermissionDialog';
 import WorktreeTabs, { TabType } from '../components/WorktreeTabs';
 import InstructionsViewer from '../components/InstructionsViewer';
+import SendInstructionDialog from '../components/SendInstructionDialog';
 import { NotificationService } from '../services/notificationService';
 import { AutoEnterService } from '../services/autoEnterService';
+import { TerminalParameterDialog } from '../components/TerminalParameterDialog';
 
 const drawerWidth = 300;
 
@@ -45,11 +49,14 @@ const SessionManager: React.FC = () => {
   const [selectedWorktree, setSelectedWorktree] = useState<Worktree | null>(null);
   const [claudeSession, setClaudeSession] = useState<Session | null>(null);
   const [terminalSession, setTerminalSession] = useState<Session | null>(null);
+  const [showTerminalParameterDialog, setShowTerminalParameterDialog] = useState(false);
+  const [pendingTerminalWorktree, setPendingTerminalWorktree] = useState<Worktree | null>(null);
   const [sessions, setSessions] = useState<Map<string, Session>>(new Map());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [notificationDialogOpen, setNotificationDialogOpen] = useState(false);
+  const [sendInstructionDialogOpen, setSendInstructionDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('claude');
   const [hasInstructions, setHasInstructions] = useState(false);
   const previousStateRef = useRef<Map<string, string>>(new Map());
@@ -435,10 +442,8 @@ const SessionManager: React.FC = () => {
     const terminal = worktreeSessions.find(s => s.type === 'terminal');
     setTerminalSession(terminal || null);
     
-    if (terminal) {
-      // Request session restore to trigger scroll to bottom
-      socket?.emit('session:restore', terminal.id);
-    }
+    // Note: No need to emit session:restore here as TerminalView component
+    // will handle restore when it mounts/remounts with the new session
   }, [socket, sessions]);
 
   // Check if instructions file exists for the selected worktree
@@ -469,8 +474,9 @@ const SessionManager: React.FC = () => {
       if (tab === 'terminal') {
         // Create terminal session if it doesn't exist
         if (!terminalSession) {
-          console.log('[SessionManager] Creating terminal session for:', selectedWorktree.path);
-          socket.emit('session:create', selectedWorktree.path, 'terminal');
+          console.log('[SessionManager] Opening terminal parameter dialog for:', selectedWorktree.path);
+          setPendingTerminalWorktree(selectedWorktree);
+          setShowTerminalParameterDialog(true);
         } else {
           // Switch to existing terminal session
           console.log('[SessionManager] Switching to terminal session:', terminalSession.id);
@@ -570,6 +576,24 @@ const SessionManager: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedWorktree, hasInstructions, handleTabChange]);
 
+  const handleSendInstruction = async (instruction: string, selectedWorktrees: string[]) => {
+    const response = await fetch('/api/worktrees/send-instruction', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        instruction,
+        worktreePaths: selectedWorktrees,
+      }),
+    });
+
+    const data = await response.json();
+    if (!data.success && response.status !== 207) {
+      throw new Error(data.error || 'Failed to send instruction');
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', height: '100%' }}>
       <AppBar
@@ -601,6 +625,14 @@ const SessionManager: React.FC = () => {
               'Claude Code Crew'
             )}
           </Typography>
+          <IconButton
+            color="inherit"
+            onClick={() => setSendInstructionDialogOpen(true)}
+            disabled={worktrees.length === 0}
+            sx={{ mr: 2 }}
+          >
+            <Send />
+          </IconButton>
           {((activeTab === 'claude' && claudeSession) || (activeTab === 'terminal' && terminalSession)) && (
             <Chip
               label={(activeTab === 'claude' ? claudeSession : terminalSession)?.state.replace('_', ' ')}
@@ -776,6 +808,27 @@ const SessionManager: React.FC = () => {
       <NotificationPermissionDialog
         open={notificationDialogOpen}
         onClose={() => setNotificationDialogOpen(false)}
+      />
+      <SendInstructionDialog
+        open={sendInstructionDialogOpen}
+        onClose={() => setSendInstructionDialogOpen(false)}
+        worktrees={worktrees}
+        onSendInstruction={handleSendInstruction}
+      />
+      <TerminalParameterDialog
+        open={showTerminalParameterDialog}
+        onClose={() => {
+          setShowTerminalParameterDialog(false);
+          setPendingTerminalWorktree(null);
+        }}
+        onConfirm={(parameters) => {
+          if (pendingTerminalWorktree && socket && socket.connected) {
+            console.log('[SessionManager] Creating terminal session with parameters:', parameters);
+            socket.emit('session:create', pendingTerminalWorktree.path, 'terminal', parameters);
+          }
+          setShowTerminalParameterDialog(false);
+          setPendingTerminalWorktree(null);
+        }}
       />
     </Box>
   );

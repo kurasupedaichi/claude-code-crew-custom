@@ -120,7 +120,7 @@ export class SessionManager extends EventEmitter {
     return newState;
   }
 
-  createSession(worktreePath: string, sessionType: SessionType = 'claude'): Session {
+  createSession(worktreePath: string, sessionType: SessionType = 'claude', parameters?: string[]): Session {
     // Check if a session of this type already exists for this worktree
     const worktreeSessions = this.sessionsByWorktree.get(worktreePath);
     if (worktreeSessions) {
@@ -157,9 +157,16 @@ export class SessionManager extends EventEmitter {
     let args: string[] = [];
 
     if (sessionType === 'terminal') {
-      // Use the user's default shell
-      command = process.env.SHELL || '/bin/sh';
-      args = ['-l']; // Login shell
+      // Check if this is a Claude Code terminal
+      if (parameters && parameters.length > 0) {
+        // Claude Code terminal with parameters
+        command = 'claude';
+        args = parameters;
+      } else {
+        // Regular terminal - use the user's default shell
+        command = process.env.SHELL || '/bin/sh';
+        args = ['-l']; // Login shell
+      }
     } else {
       // Claude Code session
       command = 'claude';

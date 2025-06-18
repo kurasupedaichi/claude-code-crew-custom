@@ -86,9 +86,9 @@ export function setupWebSocket(io: Server, sessionManager: SessionManager) {
     socket.emit('sessions:list', allSessions);
 
     // Handle session creation
-    socket.on('session:create', (worktreePath: string, sessionType?: SessionType) => {
+    socket.on('session:create', (worktreePath: string, sessionType?: SessionType, parameters?: string[]) => {
       try {
-        const session = sessionManager.createSession(worktreePath, sessionType);
+        const session = sessionManager.createSession(worktreePath, sessionType, parameters);
         sessionManager.setSessionActive(worktreePath, true);
         // Track this client as viewing the created session
         clientSessions.set(socket.id, session.id);
