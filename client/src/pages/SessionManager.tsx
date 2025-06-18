@@ -13,6 +13,7 @@ import {
   Chip,
   Divider,
   Tooltip,
+  IconButton,
 } from '@mui/material';
 import {
   FolderOpen,
@@ -23,6 +24,7 @@ import {
   Circle,
   Code,
   Description,
+  Send,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { Worktree, Session } from '../../../shared/types';
@@ -30,6 +32,7 @@ import TerminalView from '../components/TerminalView';
 import CreateWorktreeDialog from '../components/CreateWorktreeDialog';
 import DeleteWorktreeDialog from '../components/DeleteWorktreeDialog';
 import MergeWorktreeDialog from '../components/MergeWorktreeDialog';
+import SendToAllDialog from '../components/SendToAllDialog';
 import NotificationSettings from '../components/NotificationSettings';
 import NotificationPermissionDialog from '../components/NotificationPermissionDialog';
 import WorktreeTabs, { TabType } from '../components/WorktreeTabs';
@@ -49,6 +52,7 @@ const SessionManager: React.FC = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [sendToAllDialogOpen, setSendToAllDialogOpen] = useState(false);
   const [notificationDialogOpen, setNotificationDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('claude');
   const [hasInstructions, setHasInstructions] = useState(false);
@@ -570,6 +574,35 @@ const SessionManager: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedWorktree, hasInstructions, handleTabChange]);
 
+  const handleSendToAll = useCallback((message: string, selectedWorktreePaths: string[]) => {
+    if (!socket || !socket.connected) {
+      console.error('[SessionManager] Cannot send to all: socket not connected');
+      return;
+    }
+
+    // Send message to each selected worktree
+    selectedWorktreePaths.forEach((worktreePath) => {
+      const worktree = worktrees.find(wt => wt.path === worktreePath);
+      if (worktree?.session) {
+        console.log('[SessionManager] Sending message to:', worktreePath);
+        
+        // Send the message
+        socket.emit('session:input', { 
+          sessionId: worktree.session.id, 
+          input: message 
+        });
+        
+        // Send Enter key after a short delay
+        setTimeout(() => {
+          socket.emit('session:input', { 
+            sessionId: worktree.session.id, 
+            input: '\r' 
+          });
+        }, 100);
+      }
+    });
+  }, [socket, worktrees]);
+
   return (
     <Box sx={{ display: 'flex', height: '100%' }}>
       <AppBar
@@ -608,6 +641,15 @@ const SessionManager: React.FC = () => {
               size="small"
             />
           )}
+          <Tooltip title="WorkTreeに指示を送信">
+            <IconButton
+              color="inherit"
+              onClick={() => setSendToAllDialogOpen(true)}
+              sx={{ ml: 2 }}
+            >
+              <Send />
+            </IconButton>
+          </Tooltip>
         </Toolbar>
       </AppBar>
       <Drawer
@@ -776,6 +818,12 @@ const SessionManager: React.FC = () => {
       <NotificationPermissionDialog
         open={notificationDialogOpen}
         onClose={() => setNotificationDialogOpen(false)}
+      />
+      <SendToAllDialog
+        open={sendToAllDialogOpen}
+        onClose={() => setSendToAllDialogOpen(false)}
+        worktrees={worktrees}
+        onSend={handleSendToAll}
       />
     </Box>
   );
