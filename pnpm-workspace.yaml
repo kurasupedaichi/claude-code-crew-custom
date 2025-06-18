@@ -1,3 +1,6 @@
 packages:
-  - 'server'
-  - 'client'
+  - server
+  - client
+ignoredBuiltDependencies:
+  - esbuild
+  - node-pty-prebuilt-multiarch
