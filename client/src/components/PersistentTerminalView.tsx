@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -7,26 +7,27 @@ import { Socket } from 'socket.io-client';
 import { Session } from '../../../shared/types';
 import '@xterm/xterm/css/xterm.css';
 
-interface TerminalViewProps {
+interface PersistentTerminalViewProps {
   session: Session;
   socket: Socket;
+  isVisible: boolean;
 }
 
-const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
+const PersistentTerminalView: React.FC<PersistentTerminalViewProps> = ({ 
+  session, 
+  socket, 
+  isVisible 
+}) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
+  // Initialize terminal only once
   useEffect(() => {
-    if (!terminalRef.current) return;
+    if (!terminalRef.current || isInitialized) return;
 
-    // Clean up existing terminal if session changes
-    if (xtermRef.current) {
-      console.log('[TerminalView] Cleaning up existing terminal for session:', session.id);
-      xtermRef.current.dispose();
-      xtermRef.current = null;
-      fitAddonRef.current = null;
-    }
+    console.log('[PersistentTerminalView] Initializing terminal for session:', session.id);
 
     // Create terminal instance
     const term = new Terminal({
@@ -70,6 +71,7 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
     // Store references
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
+    setIsInitialized(true);
 
     // Handle terminal input
     term.onData((data) => {
@@ -81,88 +83,100 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
       socket.emit('session:resize', { sessionId: session.id, cols, rows });
     });
 
-    // Handle window resize
-    const handleResize = () => {
-      if (fitAddonRef.current) {
-        fitAddonRef.current.fit();
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    // Socket event handlers - create session-specific handlers to avoid closure issues
-    const currentSessionId = session.id;
-    const currentWorktreePath = session.worktreePath;
-    
-    const handleOutput = ({ sessionId, data }: { sessionId: string; data: string }) => {
-      if (sessionId === currentSessionId && xtermRef.current) {
-        xtermRef.current.write(data);
-        // Auto-scroll to bottom on new output
-        xtermRef.current.scrollToBottom();
-      }
-    };
-
-    const handleRestore = ({ sessionId, history }: { sessionId: string; history: string }) => {
-      if (sessionId === currentSessionId && xtermRef.current) {
-        console.log('[TerminalView] Restoring history for session:', currentSessionId, 'worktree:', currentWorktreePath);
-        xtermRef.current.clear();
-        xtermRef.current.write(history);
-        // Scroll to bottom after restoring history
-        xtermRef.current.scrollToBottom();
-      }
-    };
-
-    socket.on('session:output', handleOutput);
-    socket.on('session:restore', handleRestore);
-
-    // Request session restore if reconnecting
-    // Send both sessionId and worktreePath/type for better session recovery
-    console.log('[TerminalView] Requesting restore for session:', session.id, 'worktree:', session.worktreePath);
-    socket.emit('session:restore', {
-      sessionId: session.id,
-      worktreePath: session.worktreePath,
-      sessionType: session.type
-    });
-
-    // Cleanup
+    // Cleanup only when component unmounts
     return () => {
-      console.log('[TerminalView] Cleaning up listeners for session:', currentSessionId);
-      window.removeEventListener('resize', handleResize);
-      socket.off('session:output', handleOutput);
-      socket.off('session:restore', handleRestore);
+      console.log('[PersistentTerminalView] Disposing terminal for session:', session.id);
       if (xtermRef.current) {
         xtermRef.current.dispose();
         xtermRef.current = null;
         fitAddonRef.current = null;
       }
     };
-  }, [session.id, session.worktreePath, session.type, socket]);
+  }, [session.id, isInitialized]);
 
-  // Handle session changes
+  // Handle socket events
   useEffect(() => {
-    if (fitAddonRef.current) {
+    if (!isInitialized || !socket) return;
+
+    const currentSessionId = session.id;
+    
+    const handleOutput = ({ sessionId, data }: { sessionId: string; data: string }) => {
+      if (sessionId === currentSessionId && xtermRef.current) {
+        xtermRef.current.write(data);
+        if (isVisible) {
+          xtermRef.current.scrollToBottom();
+        }
+      }
+    };
+
+    const handleRestore = ({ sessionId, history }: { sessionId: string; history: string }) => {
+      if (sessionId === currentSessionId && xtermRef.current) {
+        console.log('[PersistentTerminalView] Restoring history for session:', currentSessionId);
+        xtermRef.current.clear();
+        xtermRef.current.write(history);
+        if (isVisible) {
+          xtermRef.current.scrollToBottom();
+        }
+      }
+    };
+
+    socket.on('session:output', handleOutput);
+    socket.on('session:restore', handleRestore);
+
+    // Request session restore
+    console.log('[PersistentTerminalView] Requesting restore for session:', session.id);
+    socket.emit('session:restore', {
+      sessionId: session.id,
+      worktreePath: session.worktreePath,
+      sessionType: session.type
+    });
+
+    return () => {
+      socket.off('session:output', handleOutput);
+      socket.off('session:restore', handleRestore);
+    };
+  }, [session.id, session.worktreePath, session.type, socket, isInitialized, isVisible]);
+
+  // Handle visibility changes
+  useEffect(() => {
+    if (!xtermRef.current || !fitAddonRef.current) return;
+
+    if (isVisible) {
+      // Fit and focus when becoming visible
       fitAddonRef.current.fit();
-    }
-    // Scroll to bottom when session changes (e.g., when switching worktrees)
-    if (xtermRef.current) {
-      xtermRef.current.scrollToBottom();
-      // Focus the terminal when the tab becomes active
       xtermRef.current.focus();
-    }
-  }, [session]);
-
-  // Scroll to bottom when worktree path changes
-  useEffect(() => {
-    if (xtermRef.current && session.worktreePath) {
       xtermRef.current.scrollToBottom();
     }
-  }, [session.worktreePath]);
+  }, [isVisible]);
+
+  // Handle window resize
+  useEffect(() => {
+    if (!isVisible || !fitAddonRef.current) return;
+
+    const handleResize = () => {
+      if (fitAddonRef.current && isVisible) {
+        fitAddonRef.current.fit();
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isVisible]);
 
   return (
     <Box
       ref={terminalRef}
       sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        opacity: isVisible ? 1 : 0,
+        visibility: isVisible ? 'visible' : 'hidden',
+        transition: 'opacity 0.2s ease-in-out, visibility 0.2s ease-in-out',
+        display: 'flex',
         flexGrow: 1,
-        height: '100%',
         padding: 1,
         backgroundColor: '#0a0a0a',
         '& .xterm': {
@@ -176,4 +190,4 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
   );
 };
 
-export default TerminalView;
+export default PersistentTerminalView;

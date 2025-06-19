@@ -28,7 +28,7 @@ import {
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { Worktree, Session } from '../../../shared/types';
-import TerminalView from '../components/TerminalView';
+import PersistentTerminalView from '../components/PersistentTerminalView';
 import CreateWorktreeDialog from '../components/CreateWorktreeDialog';
 import DeleteWorktreeDialog from '../components/DeleteWorktreeDialog';
 import MergeWorktreeDialog from '../components/MergeWorktreeDialog';
@@ -762,52 +762,79 @@ const SessionManager: React.FC = () => {
               onTabChange={handleTabChange}
               hasInstructions={hasInstructions}
             />
-            {activeTab === 'claude' ? (
-              claudeSession && socket ? (
-                <TerminalView
+            <Box sx={{ flexGrow: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
+              {/* Claude Terminal */}
+              {claudeSession && socket ? (
+                <PersistentTerminalView
                   session={claudeSession}
                   socket={socket}
+                  isVisible={activeTab === 'claude'}
                 />
-              ) : (
+              ) : activeTab === 'claude' ? (
                 <Box
                   sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    height: '100%',
+                    backgroundColor: '#0a0a0a',
                   }}
                 >
                   <Typography variant="h6" color="textSecondary">
                     Starting Claude Code session...
                   </Typography>
                 </Box>
-              )
-            ) : activeTab === 'terminal' ? (
-              terminalSession && socket ? (
-                <TerminalView
+              ) : null}
+              
+              {/* Regular Terminal */}
+              {terminalSession && socket ? (
+                <PersistentTerminalView
                   session={terminalSession}
                   socket={socket}
+                  isVisible={activeTab === 'terminal'}
                 />
-              ) : (
+              ) : activeTab === 'terminal' ? (
                 <Box
                   sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    height: '100%',
+                    backgroundColor: '#0a0a0a',
                   }}
                 >
                   <Typography variant="h6" color="textSecondary">
                     Starting Terminal session...
                   </Typography>
                 </Box>
-              )
-            ) : activeTab === 'instructions' ? (
-              <InstructionsViewer
-                worktreePath={selectedWorktree.path}
-                worktreeName={selectedWorktree.branch}
-              />
-            ) : null}
+              ) : null}
+              
+              {/* Instructions */}
+              <Box sx={{ 
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                opacity: activeTab === 'instructions' ? 1 : 0,
+                pointerEvents: activeTab === 'instructions' ? 'auto' : 'none',
+                transition: 'opacity 0.15s ease-in-out',
+                backgroundColor: '#ffffff',
+              }}>
+                <InstructionsViewer
+                  worktreePath={selectedWorktree.path}
+                  worktreeName={selectedWorktree.branch}
+                />
+              </Box>
+            </Box>
           </>
         ) : (
           <Box
