@@ -107,9 +107,12 @@ export class SessionManager extends EventEmitter {
       if (!this.busyTimers.has(sessionId)) {
         const timer = setTimeout(() => {
           const session = this.sessions.get(sessionId);
-          if (session && session.state === 'busy') {
+          if (session && session.state === 'busy' && session.process) {
+            console.log(`[SessionManager] Auto-transitioning session ${sessionId} from busy to idle`);
             session.state = 'idle';
             this.emit('sessionStateChanged', session);
+          } else {
+            console.log(`[SessionManager] Skipping auto-transition for session ${sessionId} - invalid state or process`);
           }
           this.busyTimers.delete(sessionId);
         }, 500);
@@ -263,10 +266,11 @@ export class SessionManager extends EventEmitter {
         const newState = this.detectSessionState(
           cleanData,
           oldState,
-          session.worktreePath,
+          session.id,
         );
 
         if (newState !== oldState) {
+          console.log(`[SessionManager] State transition for ${session.id}: ${oldState} -> ${newState}`);
           session.state = newState;
           this.emit('sessionStateChanged', session);
         }
