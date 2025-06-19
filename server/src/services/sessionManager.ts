@@ -1,4 +1,4 @@
-import { spawn, IPty } from 'node-pty-prebuilt-multiarch';
+import { spawn, IPty } from 'node-pty';
 import { EventEmitter } from 'events';
 import { Session, SessionState, SessionType, Worktree } from '../../../shared/types.js';
 
@@ -14,6 +14,7 @@ export class SessionManager extends EventEmitter {
   private sessionsByWorktree: Map<string, Map<SessionType, string>> = new Map();
   private waitingWithBottomBorder: Map<string, boolean> = new Map();
   private busyTimers: Map<string, NodeJS.Timeout> = new Map();
+  private resizeTimers: Map<string, NodeJS.Timeout> = new Map();
 
   private stripAnsi(str: string): string {
     return str
@@ -334,9 +335,40 @@ export class SessionManager extends EventEmitter {
 
   resizeSession(sessionId: string, cols: number, rows: number): void {
     const session = this.getSessionById(sessionId);
-    if (session) {
-      session.process.resize(cols, rows);
+    if (!session) {
+      console.warn(`[SessionManager] Resize requested for non-existent session: ${sessionId}`);
+      return;
     }
+
+    // Validate dimensions
+    if (cols < 1 || rows < 1 || cols > 1000 || rows > 1000) {
+      console.warn(`[SessionManager] Invalid resize dimensions for session ${sessionId}: ${cols}x${rows}`);
+      return;
+    }
+
+    // Clear any existing resize timer for this session
+    const existingTimer = this.resizeTimers.get(sessionId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    // Debounce resize operations to prevent rapid consecutive resizes
+    const timer = setTimeout(() => {
+      try {
+        if (session.process) {
+          console.log(`[SessionManager] Resizing session ${sessionId} to ${cols}x${rows}`);
+          session.process.resize(cols, rows);
+        } else {
+          console.warn(`[SessionManager] Cannot resize session with no process: ${sessionId}`);
+        }
+      } catch (error) {
+        console.error(`[SessionManager] Failed to resize session ${sessionId}:`, error);
+      } finally {
+        this.resizeTimers.delete(sessionId);
+      }
+    }, 50); // 50ms debounce
+
+    this.resizeTimers.set(sessionId, timer);
   }
 
   destroySessionById(sessionId: string): void {
@@ -347,10 +379,19 @@ export class SessionManager extends EventEmitter {
       } catch (_error) {
         // Process might already be dead
       }
-      const timer = this.busyTimers.get(sessionId);
-      if (timer) {
-        clearTimeout(timer);
+      
+      // Clear busy timer
+      const busyTimer = this.busyTimers.get(sessionId);
+      if (busyTimer) {
+        clearTimeout(busyTimer);
         this.busyTimers.delete(sessionId);
+      }
+      
+      // Clear resize timer
+      const resizeTimer = this.resizeTimers.get(sessionId);
+      if (resizeTimer) {
+        clearTimeout(resizeTimer);
+        this.resizeTimers.delete(sessionId);
       }
       
       // Remove from worktree tracking
@@ -389,6 +430,18 @@ export class SessionManager extends EventEmitter {
   }
 
   destroy(): void {
+    // Clear all timers first
+    for (const timer of this.busyTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.busyTimers.clear();
+    
+    for (const timer of this.resizeTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.resizeTimers.clear();
+    
+    // Then destroy all sessions
     for (const sessionId of this.sessions.keys()) {
       this.destroySessionById(sessionId);
     }

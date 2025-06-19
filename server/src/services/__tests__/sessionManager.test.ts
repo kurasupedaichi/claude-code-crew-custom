@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionManager } from '../sessionManager.js';
-import { spawn } from 'node-pty-prebuilt-multiarch';
+import { spawn } from 'node-pty';
 
-vi.mock('node-pty-prebuilt-multiarch');
+vi.mock('node-pty');
 
 describe('SessionManager', () => {
   let sessionManager: SessionManager;
@@ -179,12 +179,18 @@ describe('SessionManager', () => {
   });
 
   describe('resizeSession', () => {
-    it('should resize session terminal', () => {
+    it('should resize session terminal', async () => {
+      vi.useFakeTimers();
       const session = sessionManager.createSession('/test/worktree');
 
       sessionManager.resizeSession(session.id, 120, 40);
 
+      // Fast-forward time to trigger the debounced resize
+      await vi.advanceTimersByTimeAsync(50);
+
       expect(mockPtyProcess.resize).toHaveBeenCalledWith(120, 40);
+      
+      vi.useRealTimers();
     });
 
     it('should not throw for non-existent session', () => {

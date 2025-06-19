@@ -16,6 +16,8 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isResizingRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -76,17 +78,59 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
       socket.emit('session:input', { sessionId: session.id, input: data });
     });
 
-    // Handle terminal resize
+    // Handle terminal resize - coordinate with backend
     term.onResize(({ cols, rows }) => {
-      socket.emit('session:resize', { sessionId: session.id, cols, rows });
+      if (!isResizingRef.current) {
+        socket.emit('session:resize', { sessionId: session.id, cols, rows });
+      }
     });
 
-    // Handle window resize
+    // Debounced resize handler with proper synchronization
     const handleResize = () => {
-      if (fitAddonRef.current) {
-        fitAddonRef.current.fit();
+      // Clear any existing timeout
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
       }
+
+      // Set resize flag to prevent redundant backend calls
+      isResizingRef.current = true;
+
+      // Debounce the actual resize operation
+      resizeTimeoutRef.current = setTimeout(() => {
+        if (fitAddonRef.current && xtermRef.current) {
+          try {
+            // Store current scroll position
+            const scrollTop = xtermRef.current.element?.querySelector('.xterm-viewport')?.scrollTop || 0;
+            
+            // Perform the fit operation
+            fitAddonRef.current.fit();
+            
+            // Get new dimensions after fit
+            const cols = xtermRef.current.cols;
+            const rows = xtermRef.current.rows;
+            
+            // Send resize to backend with new dimensions
+            socket.emit('session:resize', { sessionId: session.id, cols, rows });
+            
+            // Restore scroll position after a brief delay to allow for terminal update
+            setTimeout(() => {
+              const viewport = xtermRef.current?.element?.querySelector('.xterm-viewport');
+              if (viewport && scrollTop > 0) {
+                viewport.scrollTop = Math.min(scrollTop, viewport.scrollHeight - viewport.clientHeight);
+              }
+              // Clear resize flag
+              isResizingRef.current = false;
+            }, 50);
+          } catch (error) {
+            console.error('[TerminalView] Error during resize:', error);
+            isResizingRef.current = false;
+          }
+        } else {
+          isResizingRef.current = false;
+        }
+      }, 150); // 150ms debounce delay
     };
+
     window.addEventListener('resize', handleResize);
 
     // Socket event handlers - create session-specific handlers to avoid closure issues
@@ -129,6 +173,16 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
       window.removeEventListener('resize', handleResize);
       socket.off('session:output', handleOutput);
       socket.off('session:restore', handleRestore);
+      
+      // Clear resize timeout
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+        resizeTimeoutRef.current = null;
+      }
+      
+      // Reset resize flag
+      isResizingRef.current = false;
+      
       if (xtermRef.current) {
         xtermRef.current.dispose();
         xtermRef.current = null;
@@ -139,15 +193,22 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
 
   // Handle session changes
   useEffect(() => {
-    if (fitAddonRef.current) {
-      fitAddonRef.current.fit();
-    }
-    // Scroll to bottom when session changes (e.g., when switching worktrees)
-    if (xtermRef.current) {
-      xtermRef.current.scrollToBottom();
-      // Focus the terminal when the tab becomes active
-      xtermRef.current.focus();
-    }
+    // Debounce the fit operation when session changes
+    const timeout = setTimeout(() => {
+      if (fitAddonRef.current && xtermRef.current) {
+        try {
+          fitAddonRef.current.fit();
+          // Scroll to bottom when session changes (e.g., when switching worktrees)
+          xtermRef.current.scrollToBottom();
+          // Focus the terminal when the tab becomes active
+          xtermRef.current.focus();
+        } catch (error) {
+          console.error('[TerminalView] Error during session change fit:', error);
+        }
+      }
+    }, 50);
+
+    return () => clearTimeout(timeout);
   }, [session]);
 
   // Scroll to bottom when worktree path changes
