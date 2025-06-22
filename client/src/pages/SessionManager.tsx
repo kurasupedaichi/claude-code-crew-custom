@@ -633,10 +633,10 @@ const SessionManager: React.FC = () => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {selectedWorktree ? (
               <>
-                {selectedWorktree.branch}
+                {selectedWorktree.repository || selectedWorktree.branch}
                 {activeTab !== 'instructions' && (
                   <Typography variant="caption" sx={{ ml: 1, opacity: 0.7 }}>
-                    ({activeTab === 'terminal' ? 'Terminal' : 'Claude Code'})
+                    ({selectedWorktree.branch} - {activeTab === 'terminal' ? 'Terminal' : 'Claude Code'})
                   </Typography>
                 )}
               </>

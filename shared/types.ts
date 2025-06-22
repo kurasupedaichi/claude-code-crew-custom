@@ -16,6 +16,7 @@ export interface Worktree {
   isMain: boolean;
   isCurrent: boolean;
   session?: Session;
+  repository?: string;
 }
 
 export interface CreateWorktreeRequest {

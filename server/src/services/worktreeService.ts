@@ -10,6 +10,33 @@ export class WorktreeService {
     this.rootPath = rootPath || process.cwd();
   }
 
+  private getRepositoryName(): string {
+    try {
+      // Try to get repository name from remote URL
+      const remoteUrl = execSync('git config --get remote.origin.url', {
+        cwd: this.rootPath,
+        encoding: 'utf8',
+      }).trim();
+      
+      if (remoteUrl) {
+        // Extract repository name from URL
+        // Handles formats like:
+        // - https://github.com/user/repo.git
+        // - git@github.com:user/repo.git
+        // - ssh://git@github.com/user/repo.git
+        const match = remoteUrl.match(/([^/:]+\/)?([^/:]+?)(\.git)?$/);
+        if (match && match[2]) {
+          return match[2];
+        }
+      }
+    } catch {
+      // If git remote fails, fall back to directory name
+    }
+    
+    // Fall back to directory name
+    return path.basename(this.rootPath);
+  }
+
   getWorktrees(): Worktree[] {
     try {
       const output = execSync('git worktree list --porcelain', {
@@ -19,6 +46,7 @@ export class WorktreeService {
 
       const worktrees: Worktree[] = [];
       const lines = output.trim().split('\n');
+      const repositoryName = this.getRepositoryName();
 
       let currentWorktree: Partial<Worktree> = {};
 
@@ -31,6 +59,7 @@ export class WorktreeService {
             path: line.substring(9),
             isMain: false,
             isCurrent: false,
+            repository: repositoryName,
           };
         } else if (line.startsWith('branch ')) {
           currentWorktree.branch = line.substring(7);
@@ -63,6 +92,7 @@ export class WorktreeService {
           branch: this.getCurrentBranch(),
           isMain: true,
           isCurrent: true,
+          repository: this.getRepositoryName(),
         },
       ];
     }

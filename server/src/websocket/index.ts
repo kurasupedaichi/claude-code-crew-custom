@@ -55,9 +55,13 @@ export function setupWebSocket(io: Server, sessionManager: SessionManager) {
 
   sessionManager.on('sessionRestore', (session: any) => {
     if (session.outputHistory && session.outputHistory.length > 0) {
-      const history = session.outputHistory
+      let history = session.outputHistory
         .map((buf: Buffer) => buf.toString('utf8'))
         .join('');
+      
+      // Filter out problematic escape sequences from history
+      history = sessionManager.filterProblematicSequences(history);
+      
       console.log(`Sending restore data for session ${session.id}, history length: ${history.length} characters`);
       
       // Only send restore data to clients currently viewing this session
@@ -140,9 +144,13 @@ export function setupWebSocket(io: Server, sessionManager: SessionManager) {
           clientSessions.set(socket.id, session.id);
           
           if (session.outputHistory && session.outputHistory.length > 0) {
-            const history = session.outputHistory
+            let history = session.outputHistory
               .map((buf: Buffer) => buf.toString('utf8'))
               .join('');
+            
+            // Filter out problematic escape sequences from history
+            history = sessionManager.filterProblematicSequences(history);
+            
             console.log(`Restoring session ${session.id} with ${history.length} characters of history`);
             socket.emit('session:restore', { sessionId: session.id, history });
           } else {

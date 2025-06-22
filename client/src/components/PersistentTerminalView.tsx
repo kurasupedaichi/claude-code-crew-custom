@@ -32,8 +32,19 @@ const PersistentTerminalView: React.FC<PersistentTerminalViewProps> = ({
     // Create terminal instance
     const term = new Terminal({
       cursorBlink: true,
+      cursorStyle: 'block',
       fontSize: 14,
       fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace',
+      // Disable various terminal features that can cause escape sequences
+      // @ts-ignore - reportFocus might not be in the type definitions
+      reportFocus: false,
+      allowProposedApi: true,
+      // Disable mouse tracking which can cause escape sequences
+      // @ts-ignore - These options might not be in the type definitions
+      mouseReportingMode: 'none',
+      // Disable bracketed paste mode
+      // @ts-ignore
+      bracketedPasteMode: false,
       theme: {
         background: '#0a0a0a',
         foreground: '#d4d4d4',
@@ -74,8 +85,17 @@ const PersistentTerminalView: React.FC<PersistentTerminalViewProps> = ({
     setIsInitialized(true);
 
     // Handle terminal input
+    let isReady = false;
+    // Add a small delay before accepting input to prevent initialization sequences
+    setTimeout(() => {
+      isReady = true;
+    }, 200);
+    
     term.onData((data) => {
-      socket.emit('session:input', { sessionId: session.id, input: data });
+      // Only send data if terminal is ready (prevents focus-related escape sequences)
+      if (isReady) {
+        socket.emit('session:input', { sessionId: session.id, input: data });
+      }
     });
 
     // Handle terminal resize
@@ -144,8 +164,17 @@ const PersistentTerminalView: React.FC<PersistentTerminalViewProps> = ({
     if (isVisible) {
       // Fit and focus when becoming visible
       fitAddonRef.current.fit();
-      xtermRef.current.focus();
-      xtermRef.current.scrollToBottom();
+      
+      // Add a small delay before focusing to ensure the terminal is fully ready
+      // This prevents focus-related escape sequences from being sent as input
+      const focusTimeout = setTimeout(() => {
+        if (xtermRef.current && isVisible) {
+          xtermRef.current.focus();
+          xtermRef.current.scrollToBottom();
+        }
+      }, 100);
+      
+      return () => clearTimeout(focusTimeout);
     }
   }, [isVisible]);
 

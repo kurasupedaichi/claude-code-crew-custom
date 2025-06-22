@@ -29,6 +29,25 @@ export class SessionManager extends EventEmitter {
       .replace(/[0-9]+;[0-9]+;[0-9;]+m/g, '');
   }
 
+  public filterProblematicSequences(data: string): string {
+    // Filter out OSC 11 color queries (^[]11;rgb:...)
+    data = data.replace(/\x1b\]11;[^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+    
+    // Filter out cursor position reports (^[[<row>;<col>R)
+    data = data.replace(/\x1b\[\d+;\d+R/g, '');
+    
+    // Filter out device status reports
+    data = data.replace(/\x1b\[6n/g, ''); // CPR request
+    data = data.replace(/\x1b\[5n/g, ''); // DSR request
+    data = data.replace(/\x1b\[\?1;2c/g, ''); // DA response
+    
+    // Filter out other terminal queries
+    data = data.replace(/\x1b\[>c/g, ''); // Secondary DA
+    data = data.replace(/\x1b\[c/g, ''); // Primary DA
+    
+    return data;
+  }
+
   private includesPromptBoxBottomBorder(str: string): boolean {
     const patterns = [
       /└─+┘/,
@@ -180,12 +199,23 @@ export class SessionManager extends EventEmitter {
       }
     }
 
+    // Create environment with terminal settings that prevent escape sequence queries
+    const env = {
+      ...process.env,
+      // Prevent color queries
+      COLORTERM: 'truecolor',
+      // Set TERM to a well-known value that doesn't trigger queries
+      TERM: 'xterm-256color',
+      // Disable terminal reporting features
+      TERM_PROGRAM: 'claude-code-crew',
+    } as { [key: string]: string };
+
     const ptyProcess = spawn(command, args, {
       name: 'xterm-color',
       cols: process.stdout.columns || 80,
       rows: process.stdout.rows || 24,
       cwd: worktreePath,
-      env: process.env as { [key: string]: string },
+      env,
     });
 
     const session: InternalSession = {
@@ -248,7 +278,9 @@ export class SessionManager extends EventEmitter {
 
       // Always emit sessionData first, regardless of content
       if (session.isActive) {
-        this.emit('sessionData', session, data);
+        // Filter out problematic escape sequences before sending to client
+        const filteredData = this.filterProblematicSequences(data);
+        this.emit('sessionData', session, filteredData);
       }
 
       // Skip further processing for empty content
