@@ -8,7 +8,7 @@ import { setupApiRoutes } from '../api/index.js';
 import { createTestRepo, cleanupTestRepo, waitFor } from './test-helpers.js';
 
 // Mock node-pty to avoid actual terminal creation
-vi.mock('node-pty-prebuilt-multiarch', () => ({
+vi.mock('node-pty', () => ({
   spawn: vi.fn(() => ({
     onData: vi.fn((callback: any) => {
       // Simulate some terminal output

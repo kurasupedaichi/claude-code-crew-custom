@@ -166,6 +166,7 @@ const SessionManager: React.FC = () => {
       console.log('[Client] Received session:stateChanged event:', session);
       console.log('[Client] Current worktrees:', worktreesRef.current);
       
+      // Update sessions first
       setSessions(prev => new Map(prev).set(session.id, session));
       
       if (session.type === 'claude') {
@@ -174,16 +175,12 @@ const SessionManager: React.FC = () => {
         setTerminalSession(session);
       }
       
-      // Handle notifications for state changes
-      const worktree = worktreesRef.current.find(w => {
-        const sessionsArray = Array.from(sessions.values());
-        return sessionsArray.some(s => s.id === session.id && s.worktreePath === w.path);
-      });
-      console.log('[Client] Found worktree for session:', worktree);
+      // Handle notifications for state changes - use session data directly
+      const worktree = worktreesRef.current.find(w => w.path === session.worktreePath);
       
       if (worktree) {
         const previousState = previousStateRef.current.get(session.id);
-        console.log('[Client] Previous state:', previousState, 'New state:', session.state);
+        console.log(`[Client] Session ${session.id} state change: ${previousState} -> ${session.state}`);
         
         if (previousState && previousState !== session.state) {
           console.log('[Client] State changed from', previousState, 'to', session.state, 'for worktree:', worktree.branch);

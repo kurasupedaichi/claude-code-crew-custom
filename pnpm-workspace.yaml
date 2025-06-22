@@ -3,4 +3,5 @@ packages:
   - client
 ignoredBuiltDependencies:
   - esbuild
+  - node-pty
   - node-pty-prebuilt-multiarch
